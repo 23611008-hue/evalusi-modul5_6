@@ -1,0 +1,422 @@
+---
+title: "Analisis Sayuran 2024"
+author: "RIZKY APRIANSYAH"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE, fig.width=8, fig.height=5)
+```
+> ########################################################################
+> 
+> # ANALISIS SAYURAN 2024 — SINGLE LONG SCRIPT (SEMUA LANGKAH BERURUTAN)
+> 
+> # Catatan: Ini satu chunk panjang yang menjalankan seluruh proses:
+> 
+> # - Soal 1 (1a,1b,1c,1d) kemudian Soal 2 
+> 
+> ########################################################################
+> 
+> # ------------------------- Persiapan: packages -------------------------
+> 
+> required_pkgs <- c(
++   "tidyverse","readr","readxl","cluster","factoextra","NbClust",
++   "psych","car","magrittr","broom","reshape2","ggplot2"
++ )
+> 
+> for(pkg in required_pkgs){
++   if(!requireNamespace(pkg, quietly = TRUE)){
++     install.packages(pkg, dependencies = TRUE)
++   }
++   library(pkg, character.only = TRUE)
++ }
+> 
+> cat(">> Semua paket dicek & diload.\n\n")
+>> Semua paket dicek & diload.
+
+> 
+> # ------------------------- SOAL 1: BACA DATA --------------------------
+> 
+> path1 <- "C:/Users/Lenovo/Downloads/Data No 1.csv"
+> 
+> suppressWarnings({
++   df1_try <- try(read.csv(path1, stringsAsFactors = FALSE, check.names = FALSE), silent = TRUE)
++ })
+> 
+> if(inherits(df1_try,"try-error")){
++   df1 <- read.csv2(path1, stringsAsFactors = FALSE, check.names = FALSE)
++ } else df1 <- df1_try
+> 
+> cat("\n===== PREVIEW DATA SOAL 1 =====\n")
+
+===== PREVIEW DATA SOAL 1 =====
+> print(head(df1))
+          Provinsi Bawang Merah Bawang Putih Kentang Kembang Kol     Bayam Cabai Besar
+1             Aceh    131843.96          0.0  110241     4171.00  49610.05    34266.00
+2   Sumatera Utara    580699.86        366.5 1366082   633798.40 175810.08    29294.19
+3   Sumatera Barat   2307184.11       8678.5  174808   105884.50  69060.30        2.26
+4             Riau      2455.15          0.0       0       36.52  93012.73    11396.10
+5            Jambi    122876.65       2260.0 1379840    51665.00  49967.77    11156.00
+6 Sumatera Selatan      8965.03          0.0    7615     2693.30  29139.23    66037.90
+> str(df1)
+'data.frame':	38 obs. of  7 variables:
+ $ Provinsi    : chr  "Aceh" "Sumatera Utara" "Sumatera Barat" "Riau" ...
+ $ Bawang Merah: num  131844 580700 2307184 2455 122877 ...
+ $ Bawang Putih: num  0 366 8678 0 2260 ...
+ $ Kentang     : num  110241 1366082 174808 0 1379840 ...
+ $ Kembang Kol : num  4171 633798.4 105884.5 36.5 51665 ...
+ $ Bayam       : num  49610 175810 69060 93013 49968 ...
+ $ Cabai Besar : num  34266 29294.19 2.26 11396.1 11156 ...
+> 
+> # ------------------------- SOAL 1a: PEMBERSIHAN, OUTLIER, VIF ------------
+> 
+> names(df1) <- make.names(names(df1))
+> 
+> plant_vars <- c("Bawang.Merah","Bawang.Putih","Kentang","Kembang.Kol","Bayam","Cabai.Besar")
+> if(!all(plant_vars %in% names(df1))){
++   plant_vars <- names(df1)[2:7]
++   message("Plant variables adjusted by position: ", paste(plant_vars, collapse = ", "))
++ }
+> 
+> for(v in plant_vars){
++   df1[[v]] <- as.numeric(gsub("[^0-9.-]", "", df1[[v]]))
++ }
+> 
+> df1_clean <- df1 %>% dplyr::select(Provinsi = 1, dplyr::all_of(plant_vars))
+> rownames(df1_clean) <- df1_clean$Provinsi
+> 
+> cat("\n===== RINGKASAN DATA BERSIH SOAL 1 =====\n")
+
+===== RINGKASAN DATA BERSIH SOAL 1 =====
+> print(summary(df1_clean))
+   Provinsi          Bawang.Merah      Bawang.Putih          Kentang         Kembang.Kol           Bayam         Cabai.Besar     
+ Length:38          Min.   :      0   Min.   :     0.00   Min.   :      0   Min.   :     0.0   Min.   :     0   Min.   :      0  
+ Class :character   1st Qu.:   1916   1st Qu.:     0.00   1st Qu.:      0   1st Qu.:    57.1   1st Qu.: 10484   1st Qu.:   2567  
+ Mode  :character   Median :   7522   Median :     0.00   Median :    116   Median :   611.2   Median : 24413   Median :  14326  
+                    Mean   : 548874   Mean   : 10378.43   Mean   : 334329   Mean   : 47996.6   Mean   : 44316   Mean   : 101054  
+                    3rd Qu.: 129602   3rd Qu.:     4.94   3rd Qu.:  31236   3rd Qu.: 11147.4   3rd Qu.: 49271   3rd Qu.:  58826  
+                    Max.   :6078967   Max.   :277838.04   Max.   :3018745   Max.   :633798.4   Max.   :322040   Max.   :1441340  
+> 
+> # Outlier univariat (Z-score)
+> 
+> outlier_uni <- list()
+> for(v in plant_vars){
++   z <- scale(df1_clean[[v]])
++   outlier_uni[[v]] <- which(abs(z) > 3)
++ }
+> cat("\n-- Outlier Univariat (Z > 3) --\n"); print(outlier_uni)
+
+-- Outlier Univariat (Z > 3) --
+$Bawang.Merah
+[1] 13 15
+
+$Bawang.Putih
+[1] 13
+
+$Kentang
+[1] 13 15
+
+$Kembang.Kol
+[1] 2
+
+$Bayam
+[1] 12
+
+$Cabai.Besar
+[1] 12
+
+> 
+> # Outlier boxplot
+> 
+> outlier_box <- lapply(df1_clean[plant_vars], function(x){
++   which(x %in% boxplot.stats(x)$out)
++ })
+> cat("\n-- Outlier Boxplot --\n"); print(outlier_box)
+
+-- Outlier Boxplot --
+$Bawang.Merah
+[1]  2  3 12 13 14 15 17 18 27
+
+$Bawang.Putih
+[1]  2  3  5 12 13 15 17 18 19
+
+$Kentang
+[1]  1  2  3  5 12 13 15 25 27
+
+$Kembang.Kol
+[1]  2  3  5  7 12 13 15
+
+$Bayam
+[1]  2 12 13 15
+
+$Cabai.Besar
+[1]  7 12 13 15 27
+
+> 
+> # Outlier multivariat (Mahalanobis)
+> 
+> mat <- df1_clean[plant_vars] %>% as.matrix()
+> mat_ok <- mat[complete.cases(mat), ]
+> center <- colMeans(mat_ok)
+> S <- cov(mat_ok)
+> md2 <- mahalanobis(mat_ok, center, S)
+> pvals <- pchisq(md2, df = ncol(mat_ok), lower.tail = FALSE)
+> multivar_outliers <- rownames(mat_ok)[pvals < 0.001]
+> cat("\n-- Outlier Multivariat (p < 0.001) --\n"); print(multivar_outliers)
+
+-- Outlier Multivariat (p < 0.001) --
+[1] "Sumatera Utara" "Jawa Barat"     "Jawa Tengah"    "Jawa Timur"    
+> 
+> # Multikolinearitas (VIF)
+> 
+> vif_vals <- sapply(plant_vars, function(target){
++   others <- setdiff(plant_vars, target)
++   d <- df1_clean %>% select(all_of(c(target, others))) %>% na.omit()
++   if(nrow(d) < 5) return(NA)
++   m <- lm(as.formula(paste0(target," ~ ",paste(others,collapse=" + "))), data = d)
++   v <- try(car::vif(m), silent = TRUE)
++   if(inherits(v,"try-error")) return(NA)
++   return(max(v))
++ })
+> cat("\n-- NILAI VIF (maks per regresi) --\n"); print(vif_vals)
+
+-- NILAI VIF (maks per regresi) --
+Bawang.Merah Bawang.Putih      Kentang  Kembang.Kol        Bayam  Cabai.Besar 
+    5.276521     7.673462     4.986408     6.337248     7.641954     6.595380 
+> 
+> # CATATAN OUTLIER 
+> cat("\n===== : Catatan Outlier Ekstrem (Dari Soal 1) =====\n")
+
+===== Catatan Outlier Ekstrem (Dari Soal 1) =====
+> if(exists("multivar_outliers") && length(multivar_outliers) > 0){
++   cat("Outlier multivariat terdeteksi pada Soal 1: ", paste(multivar_outliers, collapse = ", "), "\n")
++   cat("Saran: Periksa validitas data; jika salah entry → perbaiki/hapus.\n")
++   cat("Jika valid → pertimbangkan winsorize atau sensitivity analysis.\n")
++ } else {
++   cat("Tidak ditemukan outlier multivariat ekstrem pada Soal 1.\n")
++ }
+Outlier multivariat terdeteksi pada Soal 1:  Sumatera Utara, Jawa Barat, Jawa Tengah, Jawa Timur 
+Saran: Periksa validitas data; jika salah entry → perbaiki/hapus.
+Jika valid → pertimbangkan winsorize atau sensitivity analysis.
+> 
+> # ------------------------- SOAL 1b: CLUSTERING (Ward) -------------------
+> 
+> df_scale <- df1_clean[plant_vars] %>%
++   mutate_all(~ ifelse(is.na(.), median(.,na.rm=TRUE), .)) %>%
++   scale()
+> 
+> dist_mat <- dist(df_scale, method="euclidean")
+> hc <- hclust(dist_mat, method="ward.D2")
+> 
+> # Plot dendrogram (akan tampil di output HTML)
+> 
+> plot(hc, main="Dendrogram Ward – Soal 1b", xlab="", sub="")
+knitr::include_graphics("C:/Users/Lenovo/Pictures/SMT EVAL 5_6 RIZKY/Dendogram Ward - soal 1b.png")
+> 
+> # ------------------------- SOAL 1c: PEMILIHAN JUMLAH CLUSTER ------------
+> 
+> set.seed(123)
+> 
+> # Silhouette rekomendasi (visual): fviz_nbclust akan membuat plot otomatis
+> 
+> plot(factoextra::fviz_nbclust(df_scale, hcut, method="silhouette")$data, type="n") # safe call, main plot shown by fviz
+> 
+> # Pilih k (contoh): 3 — praktikan bisa ubah sesuai NbClust/silhouette
+> 
+> k <- 3
+> clusters <- cutree(hc, k=k)
+> cat("\n-- Distribusi Cluster (k=", k, ") --\n", sep=""); print(table(clusters))
+knitr::include_graphics("C:/Users/Lenovo/Pictures/SMT EVAL 5_6 RIZKY/Clusters.png")
+-- Distribusi Cluster (k=3) --
+clusters
+ 1  2  3 
+34  3  1 
+> 
+> df1_clustered <- df1_clean
+> df1_clustered$cluster <- factor(clusters)
+> 
+> # ------------------------- SOAL 1d: PROFILISASI -------------------------
+> 
+> profile <- df1_clustered %>%
++   group_by(cluster) %>%
++   summarise(
++     Count = n(),
++     across(all_of(plant_vars),
++            list(mean = ~mean(.,na.rm=TRUE), sd = ~sd(.,na.rm=TRUE)))
++   )
+> 
+> cat("\n===== PROFIL CLUSTER =====\n"); print(profile)
+
+===== PROFIL CLUSTER =====
+# A tibble: 3 × 14
+  cluster Count Bawang.Merah_mean Bawang.Merah_sd Bawang.Putih_mean Bawang.Putih_sd Kentang_mean Kentang_sd Kembang.Kol_mean Kembang.Kol_sd Bayam_mean
+  <fct>   <int>             <dbl>           <dbl>             <dbl>           <dbl>        <dbl>      <dbl>            <dbl>          <dbl>      <dbl>
+1 1          34           218587.         604578.             3174.          16174.       84246.    266514.           10544.         26427.     27388.
+2 2           3          2448758.        2128926.             2875.           2282.     2293787.    844780.          402515.        206631.    209824.
+3 3           1          6078967.             NA            277838.             NA      2958773         NA           257821.            NA     123339.
+# ℹ 3 more variables: Bayam_sd <dbl>, Cabai.Besar_mean <dbl>, Cabai.Besar_sd <dbl>
+> 
+> # Visualisasi profil mean per cluster
+> 
+> profile_means <- df1_clustered %>% group_by(cluster) %>% summarise(across(all_of(plant_vars), mean, na.rm=TRUE))
+> profile_melt <- reshape2::melt(profile_means, id.vars = "cluster")
+> 
+> p1 <- ggplot(profile_melt, aes(variable, value)) +
++   geom_col() +
++   facet_wrap(~cluster, scales="free_y") +
++   theme(axis.text.x = element_text(angle=45,hjust=1)) +
++   ggtitle("Rata-rata Produksi per Tanaman per Cluster - Soal 1d")
+> 
+> print(p1)
+> 
+knitr::include_graphics("C:/Users/Lenovo/Pictures/SMT EVAL 5_6 RIZKY/Rata-rata Produksi per Tanaman per Cluster - soal 1d.png")
+> write.csv(df1_clustered, file = "Soal1_Hasil_Cluster.csv", row.names = TRUE)
+> cat("\n>> File cluster tersimpan: Soal1_Hasil_Cluster.csv \n\n")
+
+>> File cluster tersimpan: Soal1_Hasil_Cluster.csv 
+
+> 
+> # ------------------------- SOAL 2: PEMBACAAN DATA -----------------------
+> 
+> path2 <- "C:/Users/Lenovo/Downloads/DATA no 2.csv"
+> 
+> # Coba baca via read.csv (kalau gagal, switch ke readr)
+> suppressWarnings({
++   df2_try <- try(read.csv(path2, sep=";", stringsAsFactors = FALSE, check.names = FALSE), silent=TRUE)
++ })
+> 
+> if(inherits(df2_try, "try-error")){
++   df2 <- readr::read_delim(
++     path2, 
++     delim = ";",
++     locale = locale(decimal_mark = ","),
++     col_names = TRUE
++   )
++ } else df2 <- df2_try
+> 
+> # Normalisasi nama kolom
+> names(df2) <- make.names(names(df2))
+> 
+> # Semua variabel kecuali kolom pertama (Provinsi)
+> vars2 <- names(df2)[2:ncol(df2)]
+> 
+> # Konversi menjadi numeric: bersihkan non-digit
+> for(v in vars2){
++   df2[[v]] <- as.numeric(gsub("[^0-9.-]", "", df2[[v]]))
++ }
+> 
+> # Tampilkan NA jika ada → peringatan
+> na_check <- sapply(df2[vars2], function(x) sum(is.na(x)))
+> if(any(na_check > 0)){
++   cat("\nPERINGATAN: Beberapa variabel masih memiliki NA akibat data tidak dapat dikonversi menjadi angka:\n")
++   print(na_check[na_check > 0])
++   cat("Silakan cek CSV asli jika NA terlalu banyak.\n\n")
++ }
+> 
+> # Susun data bersih
+> df2_clean <- df2 %>% select(Provinsi = 1, all_of(vars2))
+> rownames(df2_clean) <- df2_clean$Provinsi
+> 
+> cat("\n===== RINGKASAN DATA SOAL 2 =====\n")
+
+===== RINGKASAN DATA SOAL 2 =====
+> print(summary(df2_clean))
+   Provinsi         Produksi.Bayam..kuintal...Kw. Produksi.Cabai.Rawit..kuintal...Kw. Produksi.Kacang.Panjang..kuintal...Kw.
+ Length:37          Min.   :     133              Min.   :    39795                   Min.   :     524                      
+ Class :character   1st Qu.:  690603              1st Qu.:  2705126                   1st Qu.:  871128                      
+ Mode  :character   Median : 1694035              Median :  6467569                   Median : 3510415                      
+                    Mean   : 3118245              Mean   : 38385948                   Mean   : 7065570                      
+                    3rd Qu.: 4602089              3rd Qu.: 22956757                   3rd Qu.: 6843786                      
+                    Max.   :17581008              Max.   :568997904                   Max.   :60975801                      
+ Produksi.Kangkung..kuintal...Kw. Produksi.Ketimun..kuintal...Kw. Produksi.Labu.Siam..kuintal...Kw. Produksi.Petsai.Sawi..kuintal...Kw.
+ Min.   :   10038                 Min.   :      295               Min.   :        7                 Min.   :     8937                  
+ 1st Qu.: 1140077                 1st Qu.:   751491               1st Qu.:     3419                 1st Qu.:  1336456                  
+ Median : 3088829                 Median :  4058708               Median :   125955                 Median :  3262827                  
+ Mean   : 7333078                 Mean   :  9824311               Mean   : 11315428                 Mean   : 17140739                  
+ 3rd Qu.: 7645561                 3rd Qu.:  9471111               3rd Qu.:  4202809                 3rd Qu.: 11215487                  
+ Max.   :63442887                 Max.   :118389387               Max.   :142007572                 Max.   :149838419                  
+ Produksi.Semangka..kuintal...Kw. Produksi.Terung..kuintal...Kw. Produksi.Tomat..kuintal...Kw. Produksi.Cabai.Keriting.kuintal...Kw.
+ Min.   :      201                Min.   :   27257               Min.   :      267             Min.   :       17                    
+ 1st Qu.:   281593                1st Qu.: 1765918               1st Qu.:  1176567             1st Qu.:   289002                    
+ Median :  2303376                Median : 5740091               Median :  4380528             Median :  3713509                    
+ Mean   : 10378047                Mean   :15478987               Mean   : 21038658             Mean   : 23421220                    
+ 3rd Qu.:  9721983                3rd Qu.:10197517               3rd Qu.: 11323977             3rd Qu.: 10984674                    
+ Max.   :112359128                Max.   :85205923               Max.   :264710129             Max.   :180094466                    
+> 
+> 
+> # ------------------------- SOAL 2b: PCA --------------------------------
+> 
+> # Matriks numeric untuk PCA
+> mat2 <- df2_clean[ , -1, drop = FALSE]
+> 
+> # Pastikan semua numeric
+> stopifnot(all(sapply(mat2, is.numeric)))
+> 
+> # Standardisasi
+> mat2_scaled <- scale(mat2, center = TRUE, scale = TRUE)
+> 
+> # PCA
+> pca <- prcomp(mat2_scaled, center = FALSE, scale. = FALSE)
+> 
+> cat("\n===== PCA SUMMARY =====\n")
+
+===== PCA SUMMARY =====
+> print(summary(pca))
+Importance of components:
+                          PC1    PC2     PC3     PC4    PC5     PC6     PC7     PC8     PC9    PC10    PC11
+Standard deviation     2.5739 1.4442 0.89352 0.84965 0.5686 0.46001 0.30630 0.22177 0.21409 0.17037 0.12799
+Proportion of Variance 0.6023 0.1896 0.07258 0.06563 0.0294 0.01924 0.00853 0.00447 0.00417 0.00264 0.00149
+Cumulative Proportion  0.6023 0.7919 0.86445 0.93007 0.9595 0.97871 0.98723 0.99171 0.99587 0.99851 1.00000
+> 
+> loadings <- round(pca$rotation, 4)
+> cat("\n===== LOADINGS PCA =====\n")
+
+===== LOADINGS PCA =====
+> print(loadings)
+                                           PC1     PC2     PC3     PC4     PC5     PC6     PC7     PC8     PC9    PC10    PC11
+Produksi.Bayam..kuintal...Kw.          -0.1242  0.4989  0.5347  0.3558  0.3938 -0.0970 -0.1810 -0.1310  0.0020 -0.3298 -0.0093
+Produksi.Cabai.Rawit..kuintal...Kw.    -0.2752  0.3314 -0.2900 -0.4624  0.0697  0.4020 -0.0489  0.0472 -0.3639 -0.3858 -0.2532
+Produksi.Kacang.Panjang..kuintal...Kw. -0.3665 -0.0643  0.2925  0.0423 -0.0463  0.0751  0.0627  0.6828  0.2065  0.1919 -0.4656
+Produksi.Kangkung..kuintal...Kw.       -0.3656 -0.0717  0.2590 -0.1473  0.0943 -0.1420  0.2141  0.1621 -0.5793  0.2444  0.5252
+Produksi.Ketimun..kuintal...Kw.        -0.3425 -0.1254  0.2949 -0.0488 -0.3222  0.5899 -0.0638 -0.2599  0.3657 -0.0628  0.3414
+Produksi.Labu.Siam..kuintal...Kw.      -0.3425 -0.2389 -0.1224 -0.1655  0.0918 -0.4489  0.3512  0.0053  0.3480 -0.5635  0.1063
+Produksi.Petsai.Sawi..kuintal...Kw.    -0.3796  0.0327  0.0095  0.0658 -0.0339 -0.1144  0.3333 -0.6192 -0.0781  0.3474 -0.4634
+Produksi.Semangka..kuintal...Kw.       -0.2207  0.4984 -0.2384 -0.3277  0.0876 -0.2474 -0.2741  0.0238  0.4154  0.4114  0.2286
+Produksi.Terung..kuintal...Kw.         -0.2181  0.3464 -0.3546  0.5692 -0.5440 -0.0681  0.1115  0.1552 -0.1145 -0.1118  0.1416
+Produksi.Tomat..kuintal...Kw.          -0.3121 -0.3586 -0.0208  0.0333 -0.1785 -0.2860 -0.7652 -0.1052 -0.1974 -0.0880 -0.1242
+Produksi.Cabai.Keriting.kuintal...Kw.  -0.2614 -0.2472 -0.4385  0.4118  0.6166  0.3049 -0.0585  0.0372  0.0618  0.1190  0.1128
+> 
+> # Persamaan linear PC1-PC3
+> cat("\n===== Persamaan Linear 3 PC Pertama =====\n")
+
+===== Persamaan Linear 3 PC Pertama =====
+> pc_eq <- apply(loadings[, 1:3, drop=FALSE], 2, function(cf){
++   paste0("PC = ", paste0(sprintf("%+.4f*%s", cf, colnames(mat2)), collapse=" "))
++ })
+> print(pc_eq)
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                               PC1 
+"PC = -0.1242*Produksi.Bayam..kuintal...Kw. -0.2752*Produksi.Cabai.Rawit..kuintal...Kw. -0.3665*Produksi.Kacang.Panjang..kuintal...Kw. -0.3656*Produksi.Kangkung..kuintal...Kw. -0.3425*Produksi.Ketimun..kuintal...Kw. -0.3425*Produksi.Labu.Siam..kuintal...Kw. -0.3796*Produksi.Petsai.Sawi..kuintal...Kw. -0.2207*Produksi.Semangka..kuintal...Kw. -0.2181*Produksi.Terung..kuintal...Kw. -0.3121*Produksi.Tomat..kuintal...Kw. -0.2614*Produksi.Cabai.Keriting.kuintal...Kw." 
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                               PC2 
+"PC = +0.4989*Produksi.Bayam..kuintal...Kw. +0.3314*Produksi.Cabai.Rawit..kuintal...Kw. -0.0643*Produksi.Kacang.Panjang..kuintal...Kw. -0.0717*Produksi.Kangkung..kuintal...Kw. -0.1254*Produksi.Ketimun..kuintal...Kw. -0.2389*Produksi.Labu.Siam..kuintal...Kw. +0.0327*Produksi.Petsai.Sawi..kuintal...Kw. +0.4984*Produksi.Semangka..kuintal...Kw. +0.3464*Produksi.Terung..kuintal...Kw. -0.3586*Produksi.Tomat..kuintal...Kw. -0.2472*Produksi.Cabai.Keriting.kuintal...Kw." 
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                               PC3 
+"PC = +0.5347*Produksi.Bayam..kuintal...Kw. -0.2900*Produksi.Cabai.Rawit..kuintal...Kw. +0.2925*Produksi.Kacang.Panjang..kuintal...Kw. +0.2590*Produksi.Kangkung..kuintal...Kw. +0.2949*Produksi.Ketimun..kuintal...Kw. -0.1224*Produksi.Labu.Siam..kuintal...Kw. +0.0095*Produksi.Petsai.Sawi..kuintal...Kw. -0.2384*Produksi.Semangka..kuintal...Kw. -0.3546*Produksi.Terung..kuintal...Kw. -0.0208*Produksi.Tomat..kuintal...Kw. -0.4385*Produksi.Cabai.Keriting.kuintal...Kw." 
+> 
+> # Simpan skor PCA
+> scores <- as.data.frame(pca$x)
+> colnames(scores) <- paste0("RIZKY_APRIANSYAH_PC", seq_len(ncol(scores)))
+> rownames(scores) <- rownames(df2_clean)
+> 
+> write.csv(scores, "Soal2_PCA_Scores_RIZKY_APRIANSYAH.csv", row.names = TRUE)
+> cat("\n>> Skor PCA tersimpan: Soal2_PCA_Scores_RIZKY_APRIANSYAH.csv \n\n")
+
+>> Skor PCA tersimpan: Soal2_PCA_Scores_RIZKY_APRIANSYAH.csv 
+
+> 
+> # ------------------------- AKHIR --------------------------------------
+> 
+> cat("\n\n===== SELESAI MENJALANKAN SEMUA NOMOR SOAL =====\n")
+
+
+===== SELESAI MENJALANKAN SEMUA NOMOR SOAL =====
+> ########################################################################
